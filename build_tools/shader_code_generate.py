@@ -32,7 +32,7 @@ if args.task == 'total':
     f.write(code)
 elif args.task == 'single':
   shader_file = args.input[0]
-  shader_codes = sp.run(f'glslc {shader_file} -o -', check=True, stdout=sp.PIPE).stdout
+  shader_codes = sp.run(f'glslc {shader_file} --target-env=vulkan1.3 -o -', check=True, stdout=sp.PIPE).stdout
   code =  f'''export module shader_code.{get_shader_identify(shader_file)};
               import std;
               export namespace shader_code::{get_shader_identify(shader_file)}{{

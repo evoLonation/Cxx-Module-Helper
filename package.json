@@ -26,6 +26,10 @@
       {
         "command": "cxx-module-helper.build-project",
         "title": "Build Project"
+      },
+      {
+        "command": "cxx-module-helper.precompile-dependent-modules",
+        "title": "Precompile All Dependent Modules"
       }
     ]
   },

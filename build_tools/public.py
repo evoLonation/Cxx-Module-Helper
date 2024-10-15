@@ -12,6 +12,7 @@ class Paths:
     self.root_dir = ospath.abspath(root_dir_)
     self.target = target_
     self.build_dir = ospath.join(self.root_dir, 'build')
+    self.compile_commands_file = ospath.join(self.root_dir, 'compile_commands.json')
 
     self.gen_dir = ospath.join(self.build_dir, 'gen')
     self.obj_dir = ospath.join(self.build_dir, 'obj')

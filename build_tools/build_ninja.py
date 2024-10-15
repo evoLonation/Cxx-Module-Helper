@@ -14,6 +14,9 @@ def init_arg_parser():
   precompile_task = subparsers.add_parser('precompile', help='precompile a module interface file')
   precompile_task.add_argument('file', type=str, help='the file need to be precompiled')
 
+  precompile_task = subparsers.add_parser('compile', help='compile a file')
+  precompile_task.add_argument('file', type=str, help='the file need to be compiled')
+
   precompile_task = subparsers.add_parser('build', help='build whole project')
 
   return parser.parse_args()
@@ -227,6 +230,7 @@ def build_ninja():
     add_sub_ninja(writer, pub.path.ninja_module_scan_file, pub.path.ninja_header_precompile_file)
     build_module_scan(writer, sources + [info[0] for info in need_gen_sources], flag)
   # 执行module scan ninja来更新源文件的 provided module info
+  # 因为需要获取dyndep中的module info，所以需要提前执行module scan
   print('analysis source module info...')
   pub.ninja.execute(pub.path.ninja_module_scan_file, extra=' '.join(pub.path.get_dyndep_file(source) for source in sources))
 
@@ -247,8 +251,10 @@ def build_ninja():
                  rule='phony',
                  inputs=[pub.path.target_file] +
                  [pub.path.get_dylib_target_file(dylib) for dylib in get_resource(pub.rsc.type_dylib_file)])
+
+def build_compile_commands():
   # 创建 compile_commands.json
-  with open('compile_commands.json', 'wb') as f:
+  with open(pub.path.compile_commands_file, 'wb') as f:
     result = pub.ninja.execute(pub.path.ninja_file, extra=f'-t compdb {pub.ninja.compile_rule} {pub.ninja.precompile_rule}', stdout=sp.PIPE).stdout
     f.write(result)
 
@@ -270,9 +276,16 @@ if __name__ == '__main__':
   pub.set_path(args.root, 'hello', pub.TargetType.EXECUTABLE)
   if args.task == 'precompile':
     build_ninja()
+    build_compile_commands()
     precompile_by_file(args.file)
+  elif args.task == 'compile':
+    build_ninja()
+    build_compile_commands()
+    pub.ninja.execute(pub.path.ninja_file, pub.path.get_obj_file(args.file))
   elif args.task == 'build':
     build_ninja()
+    build_compile_commands()
     pub.ninja.execute(pub.path.ninja_file)
   else:
     build_ninja()
+    build_compile_commands()

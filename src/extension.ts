@@ -66,6 +66,31 @@ export function activate(context: vscode.ExtensionContext) {
           true
         );
       }
+    ),
+    vscode.commands.registerCommand(
+      "cxx-module-helper.precompile-dependent-modules",
+      async () => {
+        if (!vscode.window.activeTextEditor) {
+          vscode.window.showInformationMessage("No active editor");
+          return;
+        }
+        const file = vscode.window.activeTextEditor.document.uri.fsPath;
+        if (path.basename(file).endsWith(".ccm")) {
+          await runCommand(
+            `python ${getTool().build_script_path} --root ${
+              getTool().root_dir
+            } precompile ${vscode.window.activeTextEditor.document.uri.fsPath}`
+          );
+        } else if (path.basename(file).endsWith(".cc")) {
+          await runCommand(
+            `python ${getTool().build_script_path} --root ${
+              getTool().root_dir
+            } compile ${vscode.window.activeTextEditor.document.uri.fsPath}`
+          );
+        } else {
+          vscode.window.showInformationMessage("Not a C++ module file");
+        }
+      }
     )
   );
 }

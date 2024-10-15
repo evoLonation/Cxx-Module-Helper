@@ -202,18 +202,25 @@ if __name__ == "__main__":
   pub.set_path(args.root, 'test')
   if args.task == 'create':
     create_module(args.module_name, args.dir)
+    build_ninja.build_ninja()
+    build_ninja.build_compile_commands()
     build_ninja.precompile_by_module(args.module_name)
   elif args.task == 'add_module':
     add_module_resource(args.file, args.module_name)
+    build_ninja.build_ninja()
+    build_ninja.build_compile_commands()
     build_ninja.precompile_by_file(args.file)
   elif args.task == 'add_impl':
     add_impl_resource(args.file, args.module_name)
     build_ninja.build_ninja()
+    build_ninja.build_compile_commands()
   elif args.task == 'rename':
     rename_resource(args.old_path, args.new_path)
     build_ninja.build_ninja()
+    build_ninja.build_compile_commands()
   elif args.task == 'delete':
     delete_resource(args.file)
     build_ninja.build_ninja()
+    build_ninja.build_compile_commands()
   elif args.task == 'add_dir':
     add_directory(args.dir)
