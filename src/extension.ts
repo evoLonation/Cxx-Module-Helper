@@ -9,7 +9,6 @@ import { promisify } from "util";
 interface Tool {
   output_channel: vscode.OutputChannel;
   refactor_script_path: string;
-  build_script_path: string;
   root_dir: string;
 }
 
@@ -28,11 +27,11 @@ export function activate(context: vscode.ExtensionContext) {
     'Congratulations, your extension "Cxx-Module-Helper" is now active!'
   );
 
+  const root_dir = vscode.workspace.workspaceFolders![0].uri.fsPath;
   tool = {
+    root_dir: root_dir,
     output_channel: vscode.window.createOutputChannel("C++ Module Helper"),
-    refactor_script_path: context.asAbsolutePath("build_tools/refactor.py"),
-    build_script_path: context.asAbsolutePath("build_tools/build_ninja.py"),
-    root_dir: vscode.workspace.workspaceFolders![0].uri.fsPath,
+    refactor_script_path: path.join(root_dir, "build_tools", "refactor.py"),
   };
 
   context.subscriptions.push(
@@ -46,66 +45,21 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.window.showInformationMessage(
         "Hello World from C++ Module Helper!"
       );
-    }),
-    vscode.commands.registerCommand(
-      "cxx-module-helper.generate-ninja",
-      async () => {
-        await runCommand(
-          `python ${getTool().build_script_path} --root ${getTool().root_dir}`,
-          true
-        );
-      }
-    ),
-    vscode.commands.registerCommand(
-      "cxx-module-helper.build-project",
-      async () => {
-        await runCommand(
-          `python ${getTool().build_script_path} --root ${
-            getTool().root_dir
-          } build`,
-          true
-        );
-      }
-    ),
-    vscode.commands.registerCommand(
-      "cxx-module-helper.precompile-dependent-modules",
-      async () => {
-        if (!vscode.window.activeTextEditor) {
-          vscode.window.showInformationMessage("No active editor");
-          return;
-        }
-        const file = vscode.window.activeTextEditor.document.uri.fsPath;
-        if (path.basename(file).endsWith(".ccm")) {
-          await runCommand(
-            `python ${getTool().build_script_path} --root ${
-              getTool().root_dir
-            } precompile ${vscode.window.activeTextEditor.document.uri.fsPath}`
-          );
-        } else if (path.basename(file).endsWith(".cc")) {
-          await runCommand(
-            `python ${getTool().build_script_path} --root ${
-              getTool().root_dir
-            } compile ${vscode.window.activeTextEditor.document.uri.fsPath}`
-          );
-        } else {
-          vscode.window.showInformationMessage("Not a C++ module file");
-        }
-      }
-    )
+    })
   );
 }
 
 async function createFilesListener(event: vscode.FileCreateEvent) {
   for (const file of event.files) {
     const filename = path.basename(file.path);
-    const command_prefix = `python ${getTool().refactor_script_path} --root ${
+    const command_prefix = `python ${getTool().refactor_script_path} ${
       getTool().root_dir
     }`;
     if (filename.endsWith(".ccm")) {
       const module_name = await vscode.window.showInputBox({
         title: `Press the module provided by ${filename}:`,
       });
-      const command = `${command_prefix} add_module ${file.fsPath} ${module_name}`;
+      const command = `${command_prefix} add_interface ${file.fsPath} ${module_name}`;
       await runCommand(command);
     } else if (filename.endsWith(".cc")) {
       const module_name = await vscode.window.showInputBox({
@@ -113,26 +67,13 @@ async function createFilesListener(event: vscode.FileCreateEvent) {
       });
       const command = `${command_prefix} add_impl ${file.fsPath} ${module_name}`;
       await runCommand(command);
-    } else if (
-      (await vscode.workspace.fs.stat(file)).type === vscode.FileType.Directory
-    ) {
-      const selection = await vscode.window.showInformationMessage(
-        "是否将新文件添加到资源配置中？",
-        { modal: true },
-        "同意",
-        "拒绝"
-      );
-      if (selection === "同意") {
-        const command = `${command_prefix} add_dir ${file.fsPath}`;
-        await runCommand(command);
-      }
     }
   }
 }
 
 async function renameFilesListener(event: vscode.FileRenameEvent) {
   for (const file of event.files) {
-    const command = `python ${getTool().refactor_script_path} --root ${
+    const command = `python ${getTool().refactor_script_path} ${
       getTool().root_dir
     } rename ${file.oldUri.fsPath} ${file.newUri.fsPath}`;
     await runCommand(command);
@@ -141,7 +82,7 @@ async function renameFilesListener(event: vscode.FileRenameEvent) {
 
 async function deleteFilesListener(event: vscode.FileDeleteEvent) {
   for (const file of event.files) {
-    const command = `python ${getTool().refactor_script_path} --root ${
+    const command = `python ${getTool().refactor_script_path} ${
       getTool().root_dir
     } delete ${file.fsPath}`;
     await runCommand(command);

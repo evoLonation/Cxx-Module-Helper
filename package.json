@@ -18,18 +18,6 @@
       {
         "command": "cxx-module-helper.helloWorld",
         "title": "Hello World"
-      },
-      {
-        "command": "cxx-module-helper.generate-ninja",
-        "title": "Generate Ninja"
-      },
-      {
-        "command": "cxx-module-helper.build-project",
-        "title": "Build Project"
-      },
-      {
-        "command": "cxx-module-helper.precompile-dependent-modules",
-        "title": "Precompile All Dependent Modules"
       }
     ]
   },
