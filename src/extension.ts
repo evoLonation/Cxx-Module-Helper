@@ -59,14 +59,18 @@ async function createFilesListener(event: vscode.FileCreateEvent) {
       const module_name = await vscode.window.showInputBox({
         title: `Press the module provided by ${filename}:`,
       });
-      const command = `${command_prefix} add_interface ${file.fsPath} ${module_name}`;
-      await runCommand(command);
+      if (module_name) {
+        const command = `${command_prefix} add_interface ${file.fsPath} ${module_name}  --new-file`;
+        await runCommandInOrder(command);
+      }
     } else if (filename.endsWith(".cc")) {
       const module_name = await vscode.window.showInputBox({
         title: `Press the module implemented by ${filename}:`,
       });
-      const command = `${command_prefix} add_impl ${file.fsPath} ${module_name}`;
-      await runCommand(command);
+      if (module_name) {
+        const command = `${command_prefix} add_impl ${file.fsPath} ${module_name} --new-file`;
+        await runCommandInOrder(command);
+      }
     }
   }
 }
@@ -76,47 +80,59 @@ async function renameFilesListener(event: vscode.FileRenameEvent) {
     const command = `python ${getTool().refactor_script_path} ${
       getTool().root_dir
     } rename ${file.oldUri.fsPath} ${file.newUri.fsPath}`;
-    await runCommand(command);
+    await runCommandInOrder(command);
   }
 }
 
 async function deleteFilesListener(event: vscode.FileDeleteEvent) {
+  console.log("occurred delete event:", event.files);
   for (const file of event.files) {
     const command = `python ${getTool().refactor_script_path} ${
       getTool().root_dir
     } delete ${file.fsPath}`;
-    await runCommand(command);
+    await runCommandInOrder(command);
   }
 }
 
-// async function runCommand(command: string) {
-//   console.log(`execute command: ${command}`);
-//   const channel = getTool().output_channel;
-//   channel.appendLine(`execute command: ${command}`);
-//   const env = { ...process.env };
-//   env.Path = "C:\\Users\\ZhengyangZhao\\anaconda3;" + env.Path;
-//   return new Promise<void>((resolve, reject) => {
-//     exec(
-//       command,
-//       { shell: "powershell.exe", env: env },
-//       (error, stdout, stderr) => {
-//         channel.appendLine(`stdout:\n${stdout}`);
-//         console.log(`stdout:\n${stdout}`);
-//         if (stderr) {
-//           channel.appendLine(`stderr:\n${stderr}`);
-//           console.log(`stderr:\n${stderr}`);
-//         }
-//         if (error) {
-//           const msg = `执行错误: code ${error.code}`;
-//           vscode.window.showErrorMessage(msg);
-//           console.log(msg);
-//           channel.show();
-//         }
-//         resolve();
-//       }
-//     );
-//   });
-// }
+class AsyncQueue {
+  private queue: Array<{ task: () => Promise<any>; resolve: any; reject: any }>;
+  private isProcessing: boolean;
+  constructor() {
+    this.queue = [];
+    this.isProcessing = false;
+  }
+
+  async enqueue(task: () => Promise<any>) {
+    return new Promise((resolve, reject) => {
+      this.queue.push({ task, resolve, reject });
+      this.processQueue();
+    });
+  }
+
+  async processQueue() {
+    if (this.isProcessing || this.queue.length === 0) {
+      return;
+    }
+
+    this.isProcessing = true;
+    const { task, resolve, reject } = this.queue.shift()!;
+    try {
+      const result = await task();
+      resolve(result);
+    } catch (error) {
+      reject(error);
+    } finally {
+      this.isProcessing = false;
+      this.processQueue();
+    }
+  }
+}
+
+const asyncQueue = new AsyncQueue();
+
+async function runCommandInOrder(command: string, show: boolean = false) {
+  return asyncQueue.enqueue(() => runCommand(command, show));
+}
 
 async function runCommand(command: string, show: boolean = false) {
   return new Promise<void>((resolve, reject) => {
