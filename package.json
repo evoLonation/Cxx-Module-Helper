@@ -18,6 +18,14 @@
       {
         "command": "cxx-module-helper.helloWorld",
         "title": "Hello World"
+      },
+      {
+        "command": "cxx-module-helper.compileCurrentFile",
+        "title": "Compile Current File"
+      },
+      {
+        "command": "cxx-module-helper.quickImport",
+        "title": "Quick Import"
       }
     ]
   },

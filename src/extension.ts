@@ -10,6 +10,7 @@ interface Tool {
   output_channel: vscode.OutputChannel;
   refactor_script_path: string;
   root_dir: string;
+  build_script_path: string;
 }
 
 let tool: Tool | undefined = undefined;
@@ -32,6 +33,7 @@ export function activate(context: vscode.ExtensionContext) {
     root_dir: root_dir,
     output_channel: vscode.window.createOutputChannel("C++ Module Helper"),
     refactor_script_path: path.join(root_dir, "build_tools", "refactor.py"),
+    build_script_path: path.join(root_dir, "build_tools", "build_ninja.py"),
   };
 
   context.subscriptions.push(
@@ -45,9 +47,25 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.window.showInformationMessage(
         "Hello World from C++ Module Helper!"
       );
-    })
+    }),
+    vscode.commands.registerCommand(
+      "cxx-module-helper.compileCurrentFile",
+      compileCurrentFile
+    ),
+    vscode.commands.registerCommand(
+      "cxx-module-helper.quickImport",
+      quickImport
+    ),
+    vscode.languages.registerCompletionItemProvider(
+      { pattern: "**" },
+      completion_provider,
+      " "
+    )
   );
 }
+
+// This method is called when your extension is deactivated
+export function deactivate() {}
 
 async function createFilesListener(event: vscode.FileCreateEvent) {
   for (const file of event.files) {
@@ -178,5 +196,102 @@ async function runCommand(command: string, show: boolean = false) {
   });
 }
 
-// This method is called when your extension is deactivated
-export function deactivate() {}
+async function compileCurrentFile() {
+  const file = vscode.window.activeTextEditor!.document.uri.fsPath;
+  console.log(`compile file: ${file}, root_dir: ${getTool().root_dir}`);
+  const relpath = path.relative(getTool().root_dir, file);
+  await runCommand(
+    `python ${getTool().build_script_path} --root_dir ${getTool().root_dir}`
+  );
+  await runCommand(
+    `ninja -C ${path.join(getTool().root_dir, "build")} source/${relpath}`,
+    true
+  );
+  vscode.commands.executeCommand("clangd.restart");
+}
+
+let modules: string[] = [];
+
+function getModulesFilePath() {
+  return path.join(getTool().root_dir, "build", "modules.txt");
+}
+
+async function getModulesFromFile() {
+  const modules_file_path = getModulesFilePath();
+  try {
+    const content = await vscode.workspace.fs.readFile(
+      vscode.Uri.file(modules_file_path)
+    );
+    modules = content
+      .toString()
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "");
+  } catch (e) {
+    console.error(`Error reading modules file: ${e}`);
+    modules = [];
+  }
+}
+
+export const completion_provider: vscode.CompletionItemProvider = {
+  provideCompletionItems: async (
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    token: vscode.CancellationToken,
+    context: vscode.CompletionContext
+  ) => {
+    try {
+      const range = new vscode.Range(
+        new vscode.Position(position.line, 0),
+        position
+      );
+      const text = document.getText(range);
+      console.log(`text: ${text}`);
+      if (text.trimEnd().endsWith("import")) {
+        await getModulesFromFile();
+        const completions = modules.map((module) => {
+          const item = new vscode.CompletionItem(
+            module,
+            vscode.CompletionItemKind.Module
+          );
+          item.insertText = module + ";";
+          return item;
+        });
+        return completions;
+      }
+    } catch (e) {
+      console.log(`Error setting up request: ${e}`);
+
+      return undefined;
+    }
+  },
+};
+
+async function quickImport() {
+  const editor = vscode.window.activeTextEditor!;
+  const doc = editor.document;
+  // find "export module" or "module" next line
+  let line = 0;
+  const max_line = 10;
+  while (line < max_line) {
+    const text = doc.lineAt(line).text;
+    if (
+      text.trimStart().startsWith("export module ") ||
+      text.trimStart().startsWith("module ")
+    ) {
+      break;
+    }
+    line++;
+  }
+  if (line === max_line) {
+    console.log("No module declaration found");
+    return;
+  }
+  const position = new vscode.Position(line + 1, 0);
+  editor.selection = new vscode.Selection(position, position);
+  await editor.edit((edit) => {
+    edit.insert(position, `\nimport`);
+  });
+  editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.AtTop);
+  // await vscode.commands.executeCommand("editor.action.triggerSuggest");
+}
