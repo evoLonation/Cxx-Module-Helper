@@ -26,6 +26,10 @@
       {
         "command": "cxx-module-helper.quickImport",
         "title": "Quick Import"
+      },
+      {
+        "command": "cxx-module-helper.test",
+        "title": "Test"
       }
     ]
   },

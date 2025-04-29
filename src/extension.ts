@@ -56,6 +56,10 @@ export function activate(context: vscode.ExtensionContext) {
       "cxx-module-helper.quickImport",
       quickImport
     ),
+    vscode.commands.registerCommand(
+      "cxx-module-helper.test",
+      test
+    ),
     vscode.languages.registerCompletionItemProvider(
       { pattern: "**" },
       completion_provider,
@@ -64,21 +68,28 @@ export function activate(context: vscode.ExtensionContext) {
   );
 }
 
+async function test() {
+}
+
 // This method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate() { }
 
 async function createFilesListener(event: vscode.FileCreateEvent) {
   for (const file of event.files) {
     const filename = path.basename(file.path);
-    const command_prefix = `python ${getTool().refactor_script_path} ${
-      getTool().root_dir
-    }`;
+    // check if the file is empty
+    const is_empty = (await vscode.workspace.fs.stat(file)).size === 0;
+    const command_prefix = `python ${getTool().refactor_script_path} ${getTool().root_dir
+      }`;
     if (filename.endsWith(".ccm")) {
       const module_name = await vscode.window.showInputBox({
         title: `Press the module provided by ${filename}:`,
       });
       if (module_name) {
-        const command = `${command_prefix} add_interface ${file.fsPath} ${module_name}  --new-file`;
+        let command = `${command_prefix} add_interface ${file.fsPath} ${module_name}`;
+        if (is_empty) {
+          command += " --new-file";
+        }
         await runCommandInOrder(command);
       }
     } else if (filename.endsWith(".cc")) {
@@ -86,7 +97,10 @@ async function createFilesListener(event: vscode.FileCreateEvent) {
         title: `Press the module implemented by ${filename}:`,
       });
       if (module_name) {
-        const command = `${command_prefix} add_impl ${file.fsPath} ${module_name} --new-file`;
+        let command = `${command_prefix} add_impl ${file.fsPath} ${module_name}`;
+        if (is_empty) {
+          command += " --new-file";
+        }
         await runCommandInOrder(command);
       }
     }
@@ -95,9 +109,8 @@ async function createFilesListener(event: vscode.FileCreateEvent) {
 
 async function renameFilesListener(event: vscode.FileRenameEvent) {
   for (const file of event.files) {
-    const command = `python ${getTool().refactor_script_path} ${
-      getTool().root_dir
-    } rename ${file.oldUri.fsPath} ${file.newUri.fsPath}`;
+    const command = `python ${getTool().refactor_script_path} ${getTool().root_dir
+      } rename ${file.oldUri.fsPath} ${file.newUri.fsPath}`;
     await runCommandInOrder(command);
   }
 }
@@ -105,9 +118,8 @@ async function renameFilesListener(event: vscode.FileRenameEvent) {
 async function deleteFilesListener(event: vscode.FileDeleteEvent) {
   console.log("occurred delete event:", event.files);
   for (const file of event.files) {
-    const command = `python ${getTool().refactor_script_path} ${
-      getTool().root_dir
-    } delete ${file.fsPath}`;
+    const command = `python ${getTool().refactor_script_path} ${getTool().root_dir
+      } delete ${file.fsPath}`;
     await runCommandInOrder(command);
   }
 }
@@ -153,45 +165,25 @@ async function runCommandInOrder(command: string, show: boolean = false) {
 }
 
 async function runCommand(command: string, show: boolean = false) {
-  return new Promise<void>((resolve, reject) => {
-    console.log(`execute command: ${command}`);
-    const channel = getTool().output_channel;
-    if (show) {
-      channel.show();
-    }
-    channel.appendLine(`execute command: ${command}`);
-    const env = { ...process.env };
-    env.Path = "C:\\Users\\ZhengyangZhao\\anaconda3;" + env.Path;
-    const child = spawn(command, { shell: "powershell.exe", env: env });
-    let last_received: "stdout" | "stderr" | "none" = "none";
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (data) => {
-      if (last_received !== "stdout") {
-        last_received = "stdout";
-        channel.appendLine("----------------stdout----------------");
+  const task = new vscode.Task(
+    { type: "shell" },
+    vscode.TaskScope.Workspace,
+    "My Name",
+    "My Extension",
+    // 使用 -i 参数开启交互式 shell， 从而可以拿到 .bashrc 中的配置
+    new vscode.ShellExecution('zsh', ['-i', '-c', command])
+  );
+  task.presentationOptions = {
+    reveal: show ? vscode.TaskRevealKind.Always : vscode.TaskRevealKind.Silent,
+    showReuseMessage: false,
+  };
+  return new Promise(async (resolve, reject) => {
+    const execution = await vscode.tasks.executeTask(task);
+    const disposable = vscode.tasks.onDidEndTaskProcess((e) => {
+      if (e.execution === execution) {
+        disposable.dispose();
+        resolve(e.exitCode);
       }
-      stdout += data;
-      channel.append(String(data));
-    });
-    child.stderr.on("data", (data) => {
-      if (last_received !== "stderr") {
-        last_received = "stderr";
-        channel.appendLine("----------------stderr----------------");
-      }
-      stderr += data;
-      channel.append(String(data));
-    });
-    child.on("close", (code) => {
-      console.log(`command exit, code: ${code}`);
-      if (code !== 0) {
-        channel.show();
-      }
-      console.log(`stdout:\n ${stdout}`);
-      if (stderr) {
-        console.log(`stderr:\n ${stderr}`);
-      }
-      resolve();
     });
   });
 }
@@ -207,7 +199,7 @@ async function compileCurrentFile() {
     `ninja -C ${path.join(getTool().root_dir, "build")} source/${relpath}`,
     true
   );
-  vscode.commands.executeCommand("clangd.restart");
+  await vscode.commands.executeCommand("clangd.restart");
 }
 
 let modules: string[] = [];
